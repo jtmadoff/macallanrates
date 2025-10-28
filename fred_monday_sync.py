@@ -7,14 +7,14 @@ MONDAY_API_KEY = os.getenv("MONDAY_API_KEY")
 FRED_API_KEY = os.getenv("FRED_API_KEY")
 BOARD_ID = os.getenv("BOARD_ID")  # Must be a string!
 
-# Map each FRED series ID to its Monday item ID (replace with your real item IDs)
+# Map each FRED series ID to its Monday item ID (these are your real item IDs)
 SERIES_MAP = {
-    "SOFR": "replace_with_sofr_item_id",
-    "DGS10": "replace_with_dgs10_item_id",
-    "CPIAUCSL": "replace_with_cpiaucsl_item_id"
+    "SOFR": "18225199389",
+    "DGS10": "18225199408",
+    "CPIAUCSL": "18225199433"
 }
 
-# Use your actual Monday column IDs
+# Your actual Monday column IDs
 COLUMN_MAP = {
     "symbol": "text_mkwxpng",
     "rate": "numeric_mkwxeqs",
