@@ -12,6 +12,18 @@ SERIES_MAP = {
     "SOFR": "18225199389",
     "DGS10": "18225199408",
     "CPIAUCSL": "18225199433"
+    "FEDFUNDS": "18284354330"
+    "MPRIME": "18284354350"
+    "MORTGAGE30US": "18284354378"
+    "COMREPONSAMR": "18284354402"
+    "COMLOANS": "18284354421",  # CRE Loans, All Commercial Banks
+    "DRCLACBS": "18284354437",  # CRE Loan Delinquency Rate
+    "TLNRESCONS": "18284354457",  # Private Nonresidential Construction Spending
+    "UNRATE": "18284354474",    # Unemployment Rate
+    "GDP": "18284354486",       # GDP
+    "PPIFGS": "18284354505",    # PPI: Finished Goods
+    "DRTSCLCC": "18284354515",  # CRE Lending Standards (Senior Loan Survey)
+}
 }
 
 # Your actual Monday column IDs
