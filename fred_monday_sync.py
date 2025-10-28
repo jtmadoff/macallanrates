@@ -10,12 +10,12 @@ BOARD_ID = os.getenv("BOARD_ID")  # Must be a string!
 # Map each FRED series ID to its Monday item ID (these are your real item IDs)
 SERIES_MAP = {
     "SOFR": "18225199389",
-    "DGS10": "18225199408",
-    "CPIAUCSL": "18225199433"
-    "FEDFUNDS": "18284354330"
-    "MPRIME": "18284354350"
-    "MORTGAGE30US": "18284354378"
-    "COMREPONSAMR": "18284354402"
+    "DGS10": "18225199408",  # 10-Year Treasury
+    "CPIAUCSL": "18225199433",  # CPI (All Urban)
+    "FEDFUNDS": "18284354330",  # Federal Funds Rate
+    "MPRIME": "18284354350",    # Prime Rate
+    "MORTGAGE30US": "18284354378",  # 30-Year Fixed Mortgage Rate
+    "COMREPONSAMR": "18284354402",  # Moody's CRE Price Index - All Property Types
     "COMLOANS": "18284354421",  # CRE Loans, All Commercial Banks
     "DRCLACBS": "18284354437",  # CRE Loan Delinquency Rate
     "TLNRESCONS": "18284354457",  # Private Nonresidential Construction Spending
@@ -23,7 +23,6 @@ SERIES_MAP = {
     "GDP": "18284354486",       # GDP
     "PPIFGS": "18284354505",    # PPI: Finished Goods
     "DRTSCLCC": "18284354515",  # CRE Lending Standards (Senior Loan Survey)
-}
 }
 
 # Your actual Monday column IDs
@@ -44,7 +43,14 @@ def get_latest_fred_value(series_id):
     r = requests.get(url, params=params)
     r.raise_for_status()
     data = r.json()
-    obs = data["observations"][-1]
+    obs = None
+    # Find the latest non-missing value
+    for o in reversed(data["observations"]):
+        if o["value"] not in ("", "."):
+            obs = o
+            break
+    if not obs:
+        raise Exception(f"No valid observation for {series_id}")
     return float(obs["value"]), obs["date"]
 
 def update_monday_item(item_id, symbol, rate, date):
@@ -81,7 +87,7 @@ def update_monday_item(item_id, symbol, rate, date):
         return False
 
     if not resp.ok or "errors" in resp_json:
-        print("❌ Monday.com error:", resp_json)
+        print(f"❌ Monday.com error for {symbol} ({item_id}):", resp_json)
         return False
     print(f"✅ Updated item {item_id} ({symbol}) to {rate} on {date}")
     return True
@@ -94,4 +100,4 @@ if __name__ == "__main__":
             if not success:
                 print(f"❌ Failed to update {symbol} ({item_id})")
         except Exception as e:
-            print(f"❌ Error updating {symbol}: {e}")
+            print(f"❌ Error updating {symbol} ({item_id}): {e}")
