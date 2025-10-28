@@ -5,11 +5,37 @@ import os
 # ==== CONFIG ====
 MONDAY_API_KEY = os.getenv("MONDAY_API_KEY")
 FRED_API_KEY = os.getenv("FRED_API_KEY")
-BOARD_ID = os.getenv("BOARD_ID")  # <-- No int()!
+BOARD_ID = os.getenv("BOARD_ID")  # Must be a string!
 
-# ... rest unchanged ...
+# Map each FRED series ID to its Monday item ID (replace with your real item IDs)
+SERIES_MAP = {
+    "SOFR": "replace_with_sofr_item_id",
+    "DGS10": "replace_with_dgs10_item_id",
+    "CPIAUCSL": "replace_with_cpiaucsl_item_id"
+}
 
-def update_monday_item(item_id, rate, date):
+# Use your actual Monday column IDs
+COLUMN_MAP = {
+    "symbol": "text_mkwxpng",
+    "rate": "numeric_mkwxeqs",
+    "date": "date4",
+    "source": "text_mkwxc0yj"
+}
+
+def get_latest_fred_value(series_id):
+    url = "https://api.stlouisfed.org/fred/series/observations"
+    params = {
+        "series_id": series_id,
+        "api_key": FRED_API_KEY,
+        "file_type": "json"
+    }
+    r = requests.get(url, params=params)
+    r.raise_for_status()
+    data = r.json()
+    obs = data["observations"][-1]
+    return float(obs["value"]), obs["date"]
+
+def update_monday_item(item_id, symbol, rate, date):
     query = """
     mutation ($board: ID!, $item: ID!, $vals: JSON!) {
       change_multiple_column_values(board_id: $board, item_id: $item, column_values: $vals) {
@@ -20,7 +46,8 @@ def update_monday_item(item_id, rate, date):
     vals = {
         COLUMN_MAP["rate"]: str(rate),
         COLUMN_MAP["date"]: {"date": date},
-        COLUMN_MAP["source"]: "FRED"
+        COLUMN_MAP["source"]: "FRED",
+        COLUMN_MAP["symbol"]: symbol
     }
     data = {
         "query": query,
@@ -35,6 +62,24 @@ def update_monday_item(item_id, rate, date):
         headers={"Authorization": MONDAY_API_KEY, "Content-Type": "application/json"},
         json=data
     )
-    if not resp.ok or "errors" in resp.json():
-        print("Monday.com error:", resp.text)
-        resp.raise_for_status()
+    try:
+        resp_json = resp.json()
+    except Exception:
+        print("❌ Error decoding Monday.com response:", resp.text)
+        return False
+
+    if not resp.ok or "errors" in resp_json:
+        print("❌ Monday.com error:", resp_json)
+        return False
+    print(f"✅ Updated item {item_id} ({symbol}) to {rate} on {date}")
+    return True
+
+if __name__ == "__main__":
+    for symbol, item_id in SERIES_MAP.items():
+        try:
+            rate, date = get_latest_fred_value(symbol)
+            success = update_monday_item(item_id, symbol, rate, date)
+            if not success:
+                print(f"❌ Failed to update {symbol} ({item_id})")
+        except Exception as e:
+            print(f"❌ Error updating {symbol}: {e}")
