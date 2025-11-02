@@ -15,8 +15,6 @@ SERIES_MAP = {
     "FEDFUNDS": "18284354330",  # Federal Funds Rate
     "MPRIME": "18284354350",    # Prime Rate
     "MORTGAGE30US": "18284354378",  # 30-Year Fixed Mortgage Rate
-    "COMREPONSAMR": "18284354402",  # Moody's CRE Price Index - All Property Types
-    "COMLOANS": "18284354421",  # CRE Loans, All Commercial Banks
     "DRCLACBS": "18284354437",  # CRE Loan Delinquency Rate
     "TLNRESCONS": "18284354457",  # Private Nonresidential Construction Spending
     "UNRATE": "18284354474",    # Unemployment Rate
