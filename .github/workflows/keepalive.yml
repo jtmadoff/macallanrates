@@ -1,0 +1,28 @@
+name: Repo Keepalive
+
+on:
+  schedule:
+    - cron: "0 3 1 * *"   # runs once per month
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update keepalive file
+        run: |
+          date > .keepalive
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add .keepalive
+          git commit -m "chore: keep repo active" || exit 0
+          git push
