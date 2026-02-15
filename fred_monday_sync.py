@@ -21,6 +21,9 @@ SERIES_MAP = {
     "GDP": "18284354486",       # GDP
     "PPIFGS": "18284354505",    # PPI: Finished Goods
     "DRTSCLCC": "18284354515",  # CRE Lending Standards (Senior Loan Survey)
+    "DGS5": "11186596928",  #5-Year Treasury
+    "SOFR30DAYAVG": "11186636294",  #SOFR (30-Day Average)
+    "DPRIME": "11186594595",  #Prime Rate (Daily)
 }
 
 # Your actual Monday column IDs
