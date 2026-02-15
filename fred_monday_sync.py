@@ -6,81 +6,75 @@ import datetime
 # ==== CONFIG ====
 MONDAY_API_KEY = os.getenv("MONDAY_API_KEY")
 FRED_API_KEY = os.getenv("FRED_API_KEY")
-BOARD_ID = os.getenv("BOARD_ID")  # string ok
+BOARD_ID = os.getenv("BOARD_ID")
 MONDAY_API_URL = "https://api.monday.com/v2"
 
 if not MONDAY_API_KEY:
-    raise RuntimeError("Missing MONDAY_API_KEY env var")
+    raise RuntimeError("Missing MONDAY_API_KEY")
 if not FRED_API_KEY:
-    raise RuntimeError("Missing FRED_API_KEY env var")
+    raise RuntimeError("Missing FRED_API_KEY")
 if not BOARD_ID:
-    raise RuntimeError("Missing BOARD_ID env var")
+    raise RuntimeError("Missing BOARD_ID")
 
-# ---- Monday column IDs (from your board) ----
-COLUMN_MAP = {
-    "symbol": "text_mkwxpng",
-    "rate": "numeric_mkwxeqs",      # Current Rate (%)
-    "index": "numeric_mkzvts68",    # Index/levels
-    "date": "date4",               # Last Updated
-    "source": "text_mkwxc0yj"       # Source
-}
-
-# ---- Group routing ----
-RATES_GROUP_TITLE = "Rates"
-INDEX_GROUP_TITLE = "Index"
+# ---- Monday column IDs ----
+COLUMN_SYMBOL = "text_mkwxpng"
+COLUMN_RATE = "numeric_mkwxeqs"
+COLUMN_INDEX = "numeric_mkzvts68"
+COLUMN_DATE = "date4"
+COLUMN_SOURCE = "text_mkwxc0yj"
 
 
+# ---------------------------------------------------
+# Utility: detect whether symbol should go in RATE column
+# ---------------------------------------------------
+def is_rate_series(symbol: str) -> bool:
+    s = symbol.upper()
+    rate_keywords = [
+        "DGS",
+        "SOFR",
+        "PRIME",
+        "FEDFUNDS",
+        "MORTGAGE",
+        "UNRATE",
+        "DRCL",
+        "DRTS",
+        "RATE"
+    ]
+    return any(k in s for k in rate_keywords)
+
+
+# ---------------------------------------------------
+# Monday GraphQL helper
+# ---------------------------------------------------
 def monday_request(payload: dict) -> dict:
-    resp = requests.post(
+    r = requests.post(
         MONDAY_API_URL,
-        headers={"Authorization": MONDAY_API_KEY, "Content-Type": "application/json"},
+        headers={
+            "Authorization": MONDAY_API_KEY,
+            "Content-Type": "application/json"
+        },
         json=payload,
         timeout=30
     )
-    try:
-        data = resp.json()
-    except Exception:
-        raise RuntimeError(f"Could not decode Monday response: HTTP {resp.status_code} {resp.text}")
 
-    if not resp.ok:
-        raise RuntimeError(f"Monday HTTP {resp.status_code}: {data}")
+    try:
+        data = r.json()
+    except Exception:
+        raise RuntimeError(f"Monday decode error: {r.text}")
+
+    if not r.ok:
+        raise RuntimeError(f"Monday HTTP {r.status_code}: {data}")
 
     if "errors" in data:
-        raise RuntimeError(f"Monday GraphQL errors: {data['errors']}")
+        raise RuntimeError(f"Monday GraphQL error: {data['errors']}")
 
     return data.get("data", {})
 
 
-def fetch_latest_fred_value(series_id: str) -> float:
-    """
-    Returns latest non-missing numeric value for a FRED series.
-    """
-    url = "https://api.stlouisfed.org/fred/series/observations"
-    params = {
-        "series_id": series_id,
-        "api_key": FRED_API_KEY,
-        "file_type": "json",
-        "sort_order": "desc",
-        "limit": 20  # grab a few in case latest is "."
-    }
-    r = requests.get(url, params=params, timeout=30)
-    r.raise_for_status()
-    data = r.json()
-
-    obs = data.get("observations", [])
-    for o in obs:
-        v = o.get("value")
-        if v not in ("", ".", None):
-            return float(v)
-
-    raise Exception(f"No valid observation for {series_id}")
-
-
-def fetch_all_board_items() -> list[dict]:
-    """
-    Pulls every item in BOARD_ID with its group title + symbol text.
-    Uses items_page pagination.
-    """
+# ---------------------------------------------------
+# Pull all items from board
+# ---------------------------------------------------
+def fetch_all_items():
     items = []
     cursor = None
 
@@ -94,9 +88,7 @@ def fetch_all_board_items() -> list[dict]:
               items {{
                 id
                 name
-                group {{ title }}
-                column_values(ids: ["{COLUMN_MAP["symbol"]}"]) {{
-                  id
+                column_values(ids: ["{COLUMN_SYMBOL}"]) {{
                   text
                 }}
               }}
@@ -104,19 +96,19 @@ def fetch_all_board_items() -> list[dict]:
           }}
         }}
         """
+
         data = monday_request({"query": query})
         page = data["boards"][0]["items_page"]
 
         for it in page["items"]:
             symbol_text = ""
             cvs = it.get("column_values", [])
-            if cvs and isinstance(cvs, list):
+            if cvs:
                 symbol_text = (cvs[0].get("text") or "").strip()
 
             items.append({
                 "id": str(it["id"]),
                 "name": it.get("name", ""),
-                "group": (it.get("group", {}) or {}).get("title", "") or "",
                 "symbol": symbol_text
             })
 
@@ -127,30 +119,47 @@ def fetch_all_board_items() -> list[dict]:
     return items
 
 
-def update_monday_item(item_id: str, symbol: str, value: float, group_title: str) -> None:
-    """
-    Writes value into the correct column based on group:
-      - Rates -> Current Rate (%)
-      - Index -> Index/levels
-    Always sets:
-      - Last Updated = today
-      - Source = FRED
-      - Symbol column = symbol (keeps it normalized)
-    """
-    today = datetime.date.today().isoformat()
-
-    group_norm = group_title.strip().lower()
-    is_index = (group_norm == INDEX_GROUP_TITLE.lower())
-    target_col = COLUMN_MAP["index"] if is_index else COLUMN_MAP["rate"]
-
-    vals = {
-        target_col: str(value),
-        COLUMN_MAP["date"]: {"date": today},
-        COLUMN_MAP["source"]: "FRED",
-        COLUMN_MAP["symbol"]: symbol
+# ---------------------------------------------------
+# Get latest FRED value
+# ---------------------------------------------------
+def fetch_latest_fred_value(series_id: str) -> float:
+    url = "https://api.stlouisfed.org/fred/series/observations"
+    params = {
+        "series_id": series_id,
+        "api_key": FRED_API_KEY,
+        "file_type": "json",
+        "sort_order": "desc",
+        "limit": 20
     }
 
-    query = """
+    r = requests.get(url, params=params, timeout=30)
+    r.raise_for_status()
+    data = r.json()
+
+    for obs in data.get("observations", []):
+        v = obs.get("value")
+        if v not in ("", ".", None):
+            return float(v)
+
+    raise Exception(f"No valid observation for {series_id}")
+
+
+# ---------------------------------------------------
+# Update Monday item
+# ---------------------------------------------------
+def update_item(item_id: str, symbol: str, value: float):
+    today = datetime.date.today().isoformat()
+
+    target_column = COLUMN_RATE if is_rate_series(symbol) else COLUMN_INDEX
+
+    vals = {
+        target_column: str(value),
+        COLUMN_DATE: {"date": today},
+        COLUMN_SOURCE: "FRED",
+        COLUMN_SYMBOL: symbol
+    }
+
+    mutation = """
     mutation ($board: ID!, $item: ID!, $vals: JSON!) {
       change_multiple_column_values(board_id: $board, item_id: $item, column_values: $vals) {
         id
@@ -159,7 +168,7 @@ def update_monday_item(item_id: str, symbol: str, value: float, group_title: str
     """
 
     payload = {
-        "query": query,
+        "query": mutation,
         "variables": {
             "board": str(BOARD_ID),
             "item": str(item_id),
@@ -170,34 +179,34 @@ def update_monday_item(item_id: str, symbol: str, value: float, group_title: str
     monday_request(payload)
 
 
+# ---------------------------------------------------
+# Main sync
+# ---------------------------------------------------
 if __name__ == "__main__":
-    all_items = fetch_all_board_items()
+    items = fetch_all_items()
 
     updated = 0
-    skipped_manual = 0
+    skipped = 0
     failed = 0
 
-    for it in all_items:
-        item_id = it["id"]
-        name = it["name"]
-        group_title = it["group"]
+    for it in items:
         symbol = (it["symbol"] or "").strip()
 
-        # Skip manual rows (SBA etc.) where symbol is blank
+        # Skip manual rows (SBA, etc.)
         if not symbol:
-            skipped_manual += 1
+            skipped += 1
             continue
 
         try:
             value = fetch_latest_fred_value(symbol)
-            update_monday_item(item_id, symbol, value, group_title)
+            update_item(it["id"], symbol, value)
             updated += 1
-            print(f"✅ Updated {name} [{group_title}] ({symbol}) -> {value}")
+            print(f"✅ Updated {it['name']} ({symbol}) -> {value}")
         except Exception as e:
             failed += 1
-            print(f"❌ Error updating {name} [{group_title}] ({symbol}) (item {item_id}): {e}")
+            print(f"❌ Failed {it['name']} ({symbol}): {e}")
 
     print("\n--- SUMMARY ---")
     print(f"Updated: {updated}")
-    print(f"Skipped manual (blank symbol): {skipped_manual}")
+    print(f"Skipped (manual/no symbol): {skipped}")
     print(f"Failed: {failed}")
